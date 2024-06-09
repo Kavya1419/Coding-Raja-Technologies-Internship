@@ -1,0 +1,39 @@
+import pandas as pd
+from surprise import Dataset, Reader, SVD, accuracy, train_test_split
+from flask import Flask, request, jsonify
+
+# Data Collection
+ratings_data = pd.read_csv('ratings.csv')
+
+# Data Preprocessing
+reader = Reader(rating_scale=(1, 5))
+data = Dataset.load_from_df(ratings_data[['userId', 'movieId', 'rating']], reader)
+trainset, testset = train_test_split(data, test_size=0.2)
+
+# Collaborative Filtering
+algo = SVD()
+algo.fit(trainset)
+
+# Model Evaluation
+predictions = algo.test(testset)
+rmse = accuracy.rmse(predictions)
+
+# Top-N Recommendations
+def get_top_n_recommendations(user_id, n=10):
+    all_movie_ids = ratings_data['movieId'].unique()
+    predictions = [algo.predict(user_id, movie_id) for movie_id in all_movie_ids]
+    top_n_predictions = sorted(predictions, key=lambda x: x.est, reverse=True)[:n]
+    top_n_movie_ids = [pred.iid for pred in top_n_predictions]
+    return top_n_movie_ids
+
+# Flask Web Interface
+app = Flask(__name__)
+
+@app.route('/recommendations', methods=['GET'])
+def get_recommendations():
+    user_id = int(request.args.get('user_id'))
+    top_n_movies = get_top_n_recommendations(user_id)
+    return jsonify({'top_n_movies': top_n_movies})
+
+if __name__ == '__main__':
+    app.run(debug=True)
